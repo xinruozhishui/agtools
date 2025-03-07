@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>高级MySQL表设计工具</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --background-color: #f8f9fa;
+            --card-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--background-color);
+            color: var(--primary-color);
+        }function generateCreateTableStatement() {
+            const tableName = document.getElementById('tableName').value.trim();
+            const tableComment = document.getElementById('tableComment').value.trim();
+            
+            if (!tableName) {
+                alert("请填写表名称");
+                return;
+            }
+
+            const fields = [];
+            const primaryKeys = [];
+            const uniqueKeys = [];
+            
+            document.querySelectorAll('.field-card').forEach(row => {
+                // 添加空值安全检查
+                const getCheckedState = (selector) => {
+                    const el = row.querySelector(selector);
+                    return el ? el.checked : false;
+                };
+
+                const field = {
+                    name: row.querySelector('.field-name')?.value.trim() || '',
+                    type: row.querySelector('.field-type')?.value || 'VARCHAR',
+                    length: row.querySelector('.field-length')?.value.trim() || '',
+                    primary: getCheckedState('.field-primary'),
+                    autoIncrement: getCheckedState('.field-auto-increment'),
+                    unique: getCheckedState('.field-unique'),
+                    nullable: !getCheckedState('.field-nullable'),
+                    default: row.querySelector('.field-default')?.value.trim() || '',
+                    comment: row.querySelector('.field-comment')?.value.trim() || ''
+                };
+
+                if (!field.name) return;
+
+                // 剩余字段处理逻辑保持不变...
+            });
+
+            // 剩余生成SQL逻辑保持不变...
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 280px 1fr;
+            gap: 24px;
+            max-width: 1400px;
+            margin: 0 auto;
+            height: calc(100vh - 40px);
+        }
+
+        /* 侧边栏样式 */
+        .sidebar {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: var(--card-shadow);
+            overflow-y: auto;
+        }
+
+        .schema-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .schema-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px;
+            margin: 8px 0;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .schema-item:hover {
+            background: #e9ecef;
+            transform: translateX(4px);
+        }
+
+        /* 主内容区样式 */
+        .main-content {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 20px;
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: var(--card-shadow);
+        }
+
+        /* 表信息头部 */
+        .table-header {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .input-group input {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+        }
+
+        /* 字段编辑器 */
+        .fields-editor {
+            overflow-y: auto;
+            max-height: 400px;
+            padding-right: 8px;
+        }
+
+        .field-card {
+            display: grid;
+            grid-template-columns: 1.5fr 1.2fr 80px repeat(4, auto) 1.5fr;
+            gap: 12px;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .field-card:hover {
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        .field-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* SQL预览区域 */
+        .sql-preview {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 16px;
+            margin-top: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-family: Monaco, Consolas, monospace;
+            font-size: 13px;
+            resize: vertical;
+        }
+
+        /* 按钮样式 */
+        .button-group {
+            display: flex;
+            gap: 12px;
+            padding: 16px 0;
+            border-top: 1px solid #eee;
+            position: sticky;
+            bottom: -24px;
+            background: white;
+            z-index: 10;
+        }
+
+        button {
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            border: none;
+            cursor: pointer;
+        }
+
+        .primary-btn {
+            background: #3498db;
+            color: white;
+        }
+
+        .primary-btn:hover {
+            background: #2980b9;
+        }
+
+        .secondary-btn {
+            background: #f8f9fa;
+            color: #2c3e50;
+            border: 2px solid #dee2e6;
+        }
+
+        .secondary-btn:hover {
+            border-color: #3498db;
+            color: #3498db;
+        }
+
+        .danger-btn {
+            background: #e74c3c;
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+            
+            .field-card {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+        }
+
+        .field-card {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            margin-bottom: 8px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            transition: all 0.2s;
+            overflow-x: auto;
+        }
+
+        .field-card > * {
+            flex-shrink: 0;
+        }
+
+        .field-name {
+            width: 140px;
+        }
+
+        .field-type {
+            width: 120px;
+        }
+
+        .field-length {
+            width: 80px;
+        }
+
+        .field-default {
+            width: 100px;
+        }
+
+        .field-comment {
+            width: 150px;
+        }
+
+        .field-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 0 8px;
+            background: #fff;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+
+        /* 优化删除按钮 */
+        .delete-btn {
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ff6b6b;
+            color: white;
+            border: none;
+            transition: all 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #ff5252;
+            transform: scale(1.1);
+        }
+
+        .delete-btn::after {
+            content: "×";
+            font-size: 18px;
+            line-height: 1;
+        }
+
+        /* 紧凑输入控件 */
+        input, select {
+            padding: 6px 8px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            font-size: 13px;
+        }
+
+        /* 横向滚动提示 */
+        .fields-editor {
+            position: relative;
+        }
+        .fields-editor::after {
+            content: "→";
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #adb5bd;
+            font-size: 24px;
+            opacity: 0.5;
+            pointer-events: none;
+        }
+
+        .copy-btn {
+            position: relative;
+            background: #27ae60;
+        }
+
+        .copy-btn::after {
+            content: "✓";
+            position: absolute;
+            right: -20px;
+            opacity: 0;
+            transition: all 0.3s;
+        }
+
+        .copy-btn.copied::after {
+            right: 8px;
+            opacity: 1;
+        }
+
+        .indexes-editor {
+            margin-top: 20px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+        }
+        .index-card {
+            display: grid;
+            grid-template-columns: 120px 150px 1fr 40px;
+            gap: 10px;
+            align-items: center;
+            padding: 12px;
+            margin-bottom: 12px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .index-fields {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .index-field-tag {
+            background: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <aside class="sidebar">
+            <h2>数据表设计</h2>
+            <button class="primary-btn" style="width:100%;margin-bottom:16px" onclick="newTable()">新建表设计</button>
+            <ul class="schema-list" id="statementList"></ul>
+        </aside>
+
+        <main class="main-content">
+            <div class="table-header">
+                <div class="input-group">
+                    <label>表名称</label>
+                    <input type="text" id="tableName" placeholder="输入表名">
+                </div>
+                <div class="input-group">
+                    <label>表注释</label>
+                    <input type="text" id="tableComment" placeholder="输入表注释">
+                </div>
+            </div>
+
+            <div class="fields-editor" id="fieldsContainer"></div>
+
+            <div class="indexes-editor">
+                <h3>索引管理</h3>
+                <div id="indexesContainer"></div>
+                <button class="secondary-btn" onclick="addIndex()">＋ 添加索引</button>
+            </div>
+
+            <div class="button-group">
+                <button class="secondary-btn" onclick="addField()">＋ 添加字段</button>
+                <div style="flex:1"></div>
+                <button class="primary-btn" onclick="saveStatement()">保存设计</button>
+                <button class="primary-btn copy-btn" onclick="copySQL()">复制SQL</button>
+            </div>
+
+            <div class="sql-preview">
+                <textarea id="createTableStatement" readonly></textarea>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const STATEMENT_LIST_KEY = 'mysql_advanced_designs';
+        let currentEditingIndex = null;
+        let indexes = [];
+
+        // 添加新的索引删除函数
+        function removeIndex(button) {
+            const card = button.closest('.index-card');
+            const index = indexes.findIndex(i => i.element === card);
+            if (index > -1) {
+                indexes.splice(index, 1);    // 1. 从数组移除
+            }
+            card.remove();                  // 2. 从DOM移除
+            debounceGenerate(0);            // 3. 立即触发更新（0ms无延迟）
+        }
+
+        // 添加索引函数
+        function addIndex(index = {name: '', type: 'INDEX', fields: []}) {
+            const container = document.getElementById('indexesContainer');
+            const fields = Array.from(document.querySelectorAll('.field-name'))
+                .map(input => input.value.trim())
+                .filter(Boolean);
+
+            const card = document.createElement('div');
+            card.className = 'index-card';
+            card.innerHTML = `
+                <select class="index-type"> 
+                    <option value="INDEX" ${index.type === 'INDEX' ? 'selected' : ''}>普通索引</option>
+                    <option value="UNIQUE" ${index.type === 'UNIQUE' ? 'selected' : ''}>唯一索引</option>
+                    <option value="FULLTEXT" ${index.type === 'FULLTEXT' ? 'selected' : ''}>全文索引</option>
+                </select>
+                <input type="text" class="index-name" placeholder="索引名称" 
+                       value="${index.name || ''}"> <!-- 关键修复点 -->
+                
+                <div class="index-fields">
+                    ${fields.map(f => `
+                        <label class="index-field-tag">
+                            <input type="checkbox" 
+                                   ${index.fields.includes(f) ? 'checked' : ''}
+                                   onchange="toggleIndexField(this, '${f}')">
+                            ${f}
+                        </label>
+                    `).join('')}
+                </div>
+                <button class="delete-btn" onclick="removeIndex(this)"></button>
+            `;
+
+            // 新增名称强制回填逻辑
+            const nameInput = card.querySelector('.index-name');
+            nameInput.value = index.name || ''; // 双重保障
+
+            // 强制更新选中状态（新增逻辑）
+            requestAnimationFrame(() => {
+                card.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+                    const fieldName = checkbox.parentElement.textContent.trim();
+                    checkbox.checked = index.fields.includes(fieldName);
+                });
+            });
+
+            const indexObj = {
+                ...index,
+                element: card,
+                fields: [...index.fields]
+            };
+            
+            indexes.push(indexObj);
+            container.appendChild(card);
+
+            // 使用最新字段列表初始化
+            index.fields = index.fields.filter(f => 
+                getCurrentFieldNames().includes(f)
+            );
+            
+            // 创建时生成最新字段列表
+            card.querySelector('.index-fields').innerHTML = 
+                generateIndexFieldsHTML(getCurrentFieldNames(), index.fields);
+        }
+
+        // 更新索引类型时处理名称
+        function updateIndexType(select) {
+            const card = select.closest('.index-card');
+            const nameInput = card.querySelector('.index-name');
+            if (!nameInput.value) {
+                const type = select.value.toLowerCase();
+                nameInput.value = `${type}_idx`;
+            }
+        }
+
+        // 切换索引字段
+        function toggleIndexField(checkbox, fieldName) {
+            const card = checkbox.closest('.index-card');
+            const index = indexes.find(i => i.element === card);
+            if (checkbox.checked) {
+                index.fields.push(fieldName);
+            } else {
+                index.fields = index.fields.filter(f => f !== fieldName);
+            }
+        }
+
+        function copySQL() {
+            const sql = document.getElementById('createTableStatement').value;
+            if (!sql) {
+                alert("请先生成SQL语句");
+                return;
+            }
+
+            navigator.clipboard.writeText(sql).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.classList.add('copied');
+                setTimeout(() => btn.classList.remove('copied'), 2000);
+            }).catch(err => {
+                console.error('复制失败:', err);
+                alert("复制失败，请手动选择文本复制");
+            });
+        }
+
+        // 初始化加载
+        function loadStatements() {
+            const statements = JSON.parse(localStorage.getItem(STATEMENT_LIST_KEY)) || [];
+            const listElement = document.getElementById('statementList');
+            listElement.innerHTML = '';
+            
+            statements.forEach((statement, index) => {
+                const li = document.createElement('li');
+                li.className = 'schema-item';
+                li.innerHTML = `
+                    <span>${statement.tableName} (${statement.fields.length}字段)</span>
+                    <button class="danger-btn" style="padding:4px 8px" onclick="event.stopPropagation();deleteStatement(${index})">×</button>
+                `;
+                li.onclick = () => editStatement(index);
+                listElement.appendChild(li);
+            });
+        }
+
+        // 新建表设计
+        function newTable() {
+            document.getElementById('tableName').value = '';
+            document.getElementById('tableComment').value = '';
+            document.getElementById('fieldsContainer').innerHTML = '';
+            document.getElementById('createTableStatement').value = '';
+            currentEditingIndex = null;
+            indexes = [];
+            document.getElementById('indexesContainer').innerHTML = '';
+            addField(); // 初始字段
+        }
+
+        // 添加字段行
+        function addField(field = {}) {
+            const container = document.getElementById('fieldsContainer');
+            const row = document.createElement('div');
+            row.className = 'field-card';
+            row.innerHTML = `
+                <input type="text" placeholder="字段名" class="field-name" value="${field.name || ''}" required>
+                <select class="field-type">
+                    ${getTypeOptions(field.type)}
+                </select>
+                <input type="text" placeholder="长度" class="field-length" value="${field.length || ''}" title="示例：VARCHAR(255) 输入255，DECIMAL(10,2) 输入10,2">
+                <label class="field-checkbox"><input type="checkbox" class="field-primary" ${field.primary ? 'checked' : ''}> PK</label>
+                <label class="field-checkbox"><input type="checkbox" class="field-auto-increment" ${field.autoIncrement ? 'checked' : ''}> AI</label>
+                <label class="field-checkbox"><input type="checkbox" class="field-unique" ${field.unique ? 'checked' : ''}> UNQ</label>
+                <label class="field-checkbox"><input type="checkbox" class="field-nullable" ${!field.nullable ? 'checked' : ''}> NN</label>
+                <input type="text" placeholder="默认值" class="field-default" value="${field.default || ''}">
+                <input type="text" placeholder="字段注释" class="field-comment" value="${field.comment || ''}">
+                <button class="danger-btn" onclick="this.parentElement.remove()">删除</button>
+            `;
+            container.appendChild(row);
+
+
+            const nameInput = row.querySelector('.field-name');
+            nameInput.addEventListener('input', () => {
+                const oldName = nameInput.dataset.oldName || '';
+                const newName = nameInput.value.trim();
+                
+                // 更新索引中的字段引用
+                if (oldName && newName !== oldName) {
+                    indexes.forEach(index => {
+                        const idx = index.fields.indexOf(oldName);
+                        if (idx > -1) index.fields[idx] = newName;
+                    });
+                }
+                
+                nameInput.dataset.oldName = newName;
+                updateAllIndexCards();
+                debounceGenerate();
+            });
+
+            // 添加字段后更新索引
+            updateAllIndexCards();
+            debounceGenerate();
+
+
+            // 修改删除按钮事件绑定
+            const deleteBtn = row.querySelector('.danger-btn');
+            deleteBtn.onclick = function() {
+                // 先执行依赖检查再删除
+                removeField(this);
+            };
+        }
+
+        // 生成字段类型选项
+        function getTypeOptions(selectedType = '') {
+            const types = [
+                'INT', `TINYINT`, 'BIGINT', 'VARCHAR', 'TEXT', 'DATE', 'DATETIME', 'TIMESTAMP',
+                'DECIMAL', 'FLOAT', 'DOUBLE', 'BOOLEAN', 'ENUM', 'JSON', 'BLOB'
+            ];
+            return types.map(type => 
+                `<option value="${type}" ${type === selectedType ? 'selected' : ''}>${type}</option>`
+            ).join('');
+        }
+
+        // 生成建表语句
+        function generateCreateTableStatement() {
+            const tableName = document.getElementById('tableName').value.trim();
+            const tableComment = document.getElementById('tableComment').value.trim();
+            
+            if (!tableName) {
+                document.getElementById('createTableStatement').value = '';
+                return;
+            }
+
+            const fields = [];
+            const primaryKeys = [];
+            
+            document.querySelectorAll('.field-card').forEach(row => {
+                // 添加空值安全检查
+                const getCheckedState = (selector) => {
+                    const el = row.querySelector(selector);
+                    return el ? el.checked : false;
+                };
+
+                const field = {
+                    name: row.querySelector('.field-name')?.value.trim() || '',
+                    type: row.querySelector('.field-type')?.value || 'VARCHAR',
+                    length: row.querySelector('.field-length')?.value.trim() || '',
+                    primary: getCheckedState('.field-primary'),
+                    autoIncrement: getCheckedState('.field-auto-increment'),
+                    unique: getCheckedState('.field-unique'),
+                    nullable: !getCheckedState('.field-nullable'),
+                    default: row.querySelector('.field-default')?.value.trim() || '',
+                    comment: row.querySelector('.field-comment')?.value.trim() || ''
+                };
+
+                if (!field.name) return;
+
+                // 构建字段定义
+                let fieldDef = `\`${field.name}\` ${field.type}`;
+                
+                // 处理类型参数
+                if (field.length) {
+                    if (field.type === 'ENUM') {
+                        fieldDef += `(${field.length.split(',').map(v => `'${v.trim()}'`).join(',')})`;
+                    } else if (['VARCHAR', 'DECIMAL', 'FLOAT', 'DOUBLE'].includes(field.type)) {
+                        fieldDef += `(${field.length})`;
+                    }
+                }
+
+                // 约束处理
+                if (!field.nullable) fieldDef += ' NOT NULL';
+                if (field.default) fieldDef += ` DEFAULT ${/^\d+$/.test(field.default) ? field.default : `'${field.default}'`}`;
+                if (field.autoIncrement) fieldDef += ' AUTO_INCREMENT';
+                if (field.comment) fieldDef += ` COMMENT '${field.comment}'`;
+                
+                fields.push(fieldDef);
+                if (field.primary) primaryKeys.push(field.name);
+                if (field.unique) uniqueKeys.push(field.name);
+            });
+
+            // 索引定义部分
+            const indexDefinitions = [];
+            const usedIndexNames = new Set();
+
+            indexes.forEach(index => {
+                if (!index.fields || index.fields.length === 0) return;
+
+                // 生成索引名称
+                let indexName = index.name;
+                if (!indexName) {
+                    const prefix = {
+                        'INDEX': 'idx',
+                        'UNIQUE': 'uniq',
+                        'FULLTEXT': 'ft'
+                    }[index.type] || 'idx';
+                    
+                    indexName = `${prefix}_${index.fields.join('_')}`;
+                }
+
+                // 检查名称唯一性
+                if (usedIndexNames.has(indexName)) {
+                    alert(`索引名称重复: ${indexName}`);
+                    return;
+                }
+                usedIndexNames.add(indexName);
+
+                // 构建索引定义
+                const fieldsList = index.fields.map(f => `\`${f}\``).join(',');
+                let indexType = '';
+                
+                switch(index.type) {
+                    case 'UNIQUE':
+                        indexType = 'UNIQUE INDEX';
+                        break;
+                    case 'FULLTEXT':
+                        indexType = 'FULLTEXT INDEX';
+                        break;
+                    default:
+                        indexType = 'INDEX';
+                }
+
+                indexDefinitions.push(
+                    `${indexType} \`${indexName}\` (${fieldsList})`
+                );
+            });
+
+            // 构建完整SQL
+            let sql = `CREATE TABLE \`${tableName}\` (\n  ${fields.join(',\n  ')}`;
+            
+            // 添加主键约束
+            if (primaryKeys.length > 0) {
+                sql += `,\n  PRIMARY KEY (\`${primaryKeys.join('`, `')}\`)`;
+            }
+
+            // 添加其他索引
+            if (indexDefinitions.length > 0) {
+                sql += `,\n  ${indexDefinitions.join(',\n  ')}`;
+            }
+
+            sql += `\n) COMMENT='${tableComment.replace(/'/g, "\\'")}';`;
+
+            document.getElementById('createTableStatement').value = sql;
+        }
+
+        // 保存设计
+        function saveStatement() {
+            const tableName = document.getElementById('tableName')?.value.trim();
+            const tableComment = document.getElementById('tableComment')?.value.trim();
+            
+            const fields = [];
+            document.querySelectorAll('.field-card').forEach(row => {
+                // 安全访问方法
+                const getCheckedState = (selector) => {
+                    const el = row.querySelector(selector);
+                    return el?.checked ?? false;
+                };
+
+                // 安全获取字段属性
+                const field = {
+                    name: row.querySelector('.field-name')?.value.trim() || '',
+                    type: row.querySelector('.field-type')?.value || 'VARCHAR',
+                    length: row.querySelector('.field-length')?.value.trim() || '',
+                    primary: getCheckedState('.field-primary'),
+                    autoIncrement: getCheckedState('.field-auto-increment'),
+                    unique: getCheckedState('.field-unique'),
+                    nullable: !getCheckedState('.field-nullable'),
+                    default: row.querySelector('.field-default')?.value.trim() || '',
+                    comment: row.querySelector('.field-comment')?.value.trim() || ''
+                };
+
+                if (field.name) {
+                    fields.push(field);
+                }
+            });
+
+            if (!tableName || fields.length === 0) {
+                alert("表名和至少一个有效字段是必须的");
+                return;
+            }
+
+            const savedIndexes = indexes.map(index => ({
+                name: index.element.querySelector('.index-name').value.trim(), // 精确获取当前值
+                type: index.type,
+                fields: [...index.fields]
+            }));
+
+            const statement = {
+                tableName,
+                tableComment,
+                fields,
+                indexes: savedIndexes
+            };
+            const statements = JSON.parse(localStorage.getItem(STATEMENT_LIST_KEY)) || [];
+            
+            if (currentEditingIndex !== null) {
+                statements[currentEditingIndex] = statement;
+            } else {
+                statements.push(statement);
+            }
+            
+            localStorage.setItem(STATEMENT_LIST_KEY, JSON.stringify(statements));
+            currentEditingIndex = null;
+            loadStatements();
+            alert("设计已保存！");
+        }
+
+        // 编辑已有设计
+        function editStatement(index) {
+            const statements = JSON.parse(localStorage.getItem(STATEMENT_LIST_KEY));
+            const { 
+                tableName, 
+                tableComment, 
+                fields, 
+                indexes: savedIndexes = []
+            } = statements[index] || {};
+
+            // 先加载字段（关键修复点）
+            const container = document.getElementById('fieldsContainer');
+            container.innerHTML = '';
+            fields.forEach(field => addField(field));
+
+            // 再加载索引（确保字段已存在）
+            indexes = [];
+            document.getElementById('indexesContainer').innerHTML = "";
+            savedIndexes.forEach(idx => {
+                addIndex({
+                    name: idx.name,
+                    type: idx.type,
+                    fields: [...idx.fields]
+                });
+            });
+
+            // 加载其他信息
+            document.getElementById('tableName').value = tableName;
+            document.getElementById('tableComment').value = tableComment || '';
+            
+            currentEditingIndex = index;
+            generateCreateTableStatement();
+        }
+
+        // 删除设计
+        function deleteStatement(index) {
+            const statements = JSON.parse(localStorage.getItem(STATEMENT_LIST_KEY));
+            statements.splice(index, 1);
+            localStorage.setItem(STATEMENT_LIST_KEY, JSON.stringify(statements));
+            loadStatements();
+        }
+
+        let debounceTimer;
+        function debounceGenerate(delay = 300) {
+            clearTimeout(debounceTimer);
+            if (delay === 0) {
+                generateCreateTableStatement(); // 立即执行
+            } else {
+                debounceTimer = setTimeout(generateCreateTableStatement, delay);
+            }
+        }
+
+        // 事件监听配置
+        function setupAutoGenerate() {
+            // 监听表基本信息变化
+            const tableInputs = ['tableName', 'tableComment'];
+            tableInputs.forEach(id => {
+                document.getElementById(id).addEventListener('input', () => debounceGenerate());
+            });
+
+            // 使用事件委托监听字段编辑区变化
+            document.getElementById('fieldsContainer').addEventListener('input', (e) => {
+                if (e.target.matches('input, select')) {
+                    debounceGenerate();
+                }
+            });
+
+            // 监听索引区变化
+            document.getElementById('indexesContainer').addEventListener('input', (e) => {
+                if (e.target.matches('input, select')) {
+                    debounceGenerate();
+                }
+            });
+
+            // 监听字段增减
+            const observer = new MutationObserver((mutations) => {
+                debounceGenerate();
+            });
+            observer.observe(document.getElementById('fieldsContainer'), {
+                childList: true,
+                subtree: true
+            });
+
+            document.getElementById('tableName').addEventListener('input', () => {
+                debounceGenerate(100); // 更短的延迟
+                if (!this.value.trim()) {
+                    document.getElementById('createTableStatement').value = '';
+                }
+            });
+
+            // 初始生成
+            generateCreateTableStatement();
+        }
+
+        function removeField(button) {
+            const fieldCard = button.closest('.field-card');
+            const fieldName = fieldCard.querySelector('.field-name').value.trim();
+            
+            // 检查字段是否被索引引用
+            const dependentIndexes = indexes.filter(index => 
+                index.fields.includes(fieldName)
+            ).map(index => {
+                const nameInput = index.element.querySelector('.index-name');
+                return nameInput.value.trim() || '未命名索引';
+            });
+
+            if (dependentIndexes.length > 0) {
+                alert(`无法删除字段 "${fieldName}"，该字段被以下索引引用：\n${dependentIndexes.join('\n')}`);
+                return; // 阻止删除操作
+            }
+
+            // 执行删除操作
+            fieldCard.remove();
+            
+            // 更新相关数据
+            updateAllIndexCards();
+            debounceGenerate();
+        }
+
+
+
+        // 更新所有索引卡的字段列表
+        function updateAllIndexCards() {
+            const currentFields = getCurrentFieldNames();
+            
+            indexes.forEach(index => {
+                const container = index.element.querySelector('.index-fields');
+                container.innerHTML = generateIndexFieldsHTML(currentFields, index.fields);
+            });
+        }
+
+        // 获取当前有效字段名列表
+        function getCurrentFieldNames() {
+            return Array.from(document.querySelectorAll('.field-name'))
+                .map(input => input.value.trim())
+                .filter(Boolean);
+        }
+
+
+        // 生成索引字段的HTML
+        function generateIndexFieldsHTML(fields, selectedFields) {
+            return fields.map(f => `
+                <label class="index-field-tag">
+                    <input type="checkbox" 
+                           ${selectedFields.includes(f) ? 'checked' : ''}
+                           onchange="toggleIndexField(this, '${f}')">
+                    ${f}
+                </label>
+            `).join('');
+        }
+
+
+        // 在字段容器添加MutationObserver
+        const fieldObserver = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'childList') {
+                    updateAllIndexCards();
+                    debounceGenerate();
+                }
+            });
+        });
+
+        fieldObserver.observe(document.getElementById('fieldsContainer'), {
+            childList: true,
+            subtree: true
+        });
+
+
+        // 初始化
+        window.onload = () => {
+            loadStatements();
+            addField();
+            setupAutoGenerate();
+        };
+    </script>
+</body>
+</html>
