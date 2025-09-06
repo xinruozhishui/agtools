@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <title>CSV多组多条件筛选与百分比统计（优化下拉）</title>
+  <title>CSV多组筛选+百分比统计（中文编码自动识别）</title>
   <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet" />
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<h2>CSV本地导入 + 多组多条件筛选 + 每组条件百分比统计（优化版）</h2>
+<h2>CSV本地导入 + 多组多条件筛选 + 每组条件百分比统计（自动识别编码）</h2>
 
 <input type="file" id="csvFileInput" accept=".csv" />
 
@@ -46,6 +46,8 @@
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 <!-- Tabulator -->
 <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+<!-- jschardet for encoding detection -->
+<script src="https://cdn.jsdelivr.net/npm/jschardet@3.0.0/dist/jschardet.min.js"></script>
 
 <script>
   let table;
@@ -75,30 +77,46 @@
 
   fileInput.addEventListener('change', (e) => {
     if (!e.target.files.length) return;
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = async function(event) {
+      progress.textContent = "正在识别编码...";
+      const buffer = event.target.result;
+      const binary = new Uint8Array(buffer);
+      const sampleText = new TextDecoder('utf-8').decode(binary.slice(0, 1000));
+      const detected = jschardet.detect(sampleText);
+      const encoding = (detected.encoding || 'utf-8').toLowerCase();
+
+      let decoder;
+      if (encoding.includes('gb') || encoding === 'windows-1252') {
+        decoder = new TextDecoder('gb18030');
+      } else {
+        decoder = new TextDecoder('utf-8');
+      }
+
+      const csvText = decoder.decode(binary);
+      parseCSV(csvText);
+    };
+    reader.readAsArrayBuffer(file);
+  });
+
+  function parseCSV(text) {
     originalData = [];
     filteredData = [];
-    progress.textContent = "正在解析CSV文件...";
-    percentDisplay.textContent = '';
     groupsContainer.innerHTML = '';
+    progress.textContent = "正在解析CSV...";
+    percentDisplay.textContent = '';
     addGroupBtn.disabled = true;
     calcPercentBtn.disabled = true;
     applyFilterBtn.disabled = true;
     exportBtn.disabled = true;
     if (table) table.destroy();
-    const file = e.target.files[0];
 
-    Papa.parse(file, {
+    Papa.parse(text, {
       header: true,
-      worker: true,
       skipEmptyLines: true,
-      step: function(results) {
-        originalData.push(results.data);
-        if (originalData.length % 10000 === 0) {
-          progress.textContent = `已解析行数: ${originalData.length}`;
-        }
-      },
-      complete: function() {
-        progress.textContent = `解析完成，共 ${originalData.length} 行`;
+      complete: function(results) {
+        originalData = results.data;
         if (originalData.length === 0) {
           alert('CSV文件无数据或格式不正确');
           return;
@@ -111,8 +129,7 @@
         }));
 
         collectUniqueValues();
-
-        addGroup(); // 自动添加一个默认条件组
+        addGroup();
 
         table = new Tabulator("#table", {
           data: originalData,
@@ -129,12 +146,14 @@
         calcPercentBtn.disabled = false;
         applyFilterBtn.disabled = false;
         exportBtn.disabled = false;
+
+        progress.textContent = `解析完成，共 ${originalData.length} 行`;
       },
       error: function(err) {
         progress.textContent = "解析错误: " + err.message;
       }
     });
-  });
+  }
 
   function collectUniqueValues() {
     uniqueValuesMap = {};
@@ -152,7 +171,6 @@
       const values = Array.from(uniqueValuesMap[field]).sort();
 
       if (values.length <= 20) {
-        // 使用下拉框
         const select = document.createElement('select');
         values.forEach(val => {
           const opt = document.createElement('option');
@@ -162,10 +180,9 @@
         });
         valueSelectTemplateMap[field] = select;
       } else {
-        // 使用文本输入框
         const input = document.createElement('input');
         input.type = 'text';
-        input.placeholder = '请输入值（唯一值太多）';
+        input.placeholder = '请输入值';
         valueSelectTemplateMap[field] = input;
       }
     });
@@ -186,7 +203,6 @@
     const removeGroupBtn = document.createElement('button');
     removeGroupBtn.textContent = '删除条件组';
     removeGroupBtn.className = 'remove-group';
-    removeGroupBtn.type = 'button';
     removeGroupBtn.addEventListener('click', () => {
       groupsContainer.removeChild(groupDiv);
       updateGroupTitles();
@@ -344,12 +360,16 @@
 
   exportBtn.addEventListener('click', () => {
     if (!filteredData.length) return alert('没有筛选结果，不能导出');
-    const csv = Papa.unparse(filteredData);
+    // 为了防止中文乱码，导出时添加UTF-8 BOM头
+    const bom = "\uFEFF";
+    const csv = bom + Papa.unparse(filteredData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
     link.download = "filtered_data.csv";
+    document.body.appendChild(link);
     link.click();
+    document.body.removeChild(link);
   });
 </script>
 
