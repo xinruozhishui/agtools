@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSV多组多条件筛选与百分比统计（优化下拉）</title>
+  <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #groupsContainer { margin: 10px 0; }
+    .condition-group { border: 1px solid #aaa; padding: 10px; margin-bottom: 15px; border-radius: 4px; background: #f9f9f9; }
+    .group-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .condition-row { display: flex; gap: 8px; margin-bottom: 6px; align-items: center; }
+    select, input { padding: 4px 6px; font-size: 14px; }
+    select { width: 120px; }
+    input[type="text"] { width: 120px; }
+    button { padding: 6px 12px; font-size: 14px; margin-right: 10px; cursor: pointer; }
+    button.remove-condition, button.remove-group { background: #d9534f; color: white; border: none; border-radius: 3px; }
+    button.add-condition { background: #5bc0de; color: white; border: none; border-radius: 3px; }
+    button.add-group { background: #5cb85c; color: white; border: none; border-radius: 3px; margin-bottom: 15px; }
+    #progress { margin-top: 10px; }
+    #percentDisplay { margin-top: 10px; font-weight: bold; color: #007700; white-space: pre-wrap; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover:not(:disabled) { filter: brightness(1.1); }
+  </style>
+</head>
+<body>
+
+<h2>CSV本地导入 + 多组多条件筛选 + 每组条件百分比统计（优化版）</h2>
+
+<input type="file" id="csvFileInput" accept=".csv" />
+
+<div>
+  <button id="addGroupBtn" disabled>新增条件组</button>
+  <button id="calcPercentBtn" disabled>分别统计每组条件百分比</button>
+  <button id="applyFilterBtn" disabled>应用所有条件组筛选</button>
+  <button id="exportBtn" disabled>导出筛选结果CSV</button>
+</div>
+
+<div id="groupsContainer"></div>
+
+<div id="progress"></div>
+<div id="percentDisplay"></div>
+<div id="table"></div>
+
+<!-- PapaParse -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+<!-- Tabulator -->
+<script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+
+<script>
+  let table;
+  let originalData = [];
+  let filteredData = [];
+  let currentColumns = [];
+  let uniqueValuesMap = {};
+  let valueSelectTemplateMap = {};
+
+  const fileInput = document.getElementById('csvFileInput');
+  const groupsContainer = document.getElementById('groupsContainer');
+  const addGroupBtn = document.getElementById('addGroupBtn');
+  const calcPercentBtn = document.getElementById('calcPercentBtn');
+  const applyFilterBtn = document.getElementById('applyFilterBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const progress = document.getElementById('progress');
+  const percentDisplay = document.getElementById('percentDisplay');
+
+  const operators = [
+    { label: '包含', value: 'contains' },
+    { label: '>', value: '>' },
+    { label: '>=', value: '>=' },
+    { label: '=', value: '=' },
+    { label: '<', value: '<' },
+    { label: '<=', value: '<=' }
+  ];
+
+  fileInput.addEventListener('change', (e) => {
+    if (!e.target.files.length) return;
+    originalData = [];
+    filteredData = [];
+    progress.textContent = "正在解析CSV文件...";
+    percentDisplay.textContent = '';
+    groupsContainer.innerHTML = '';
+    addGroupBtn.disabled = true;
+    calcPercentBtn.disabled = true;
+    applyFilterBtn.disabled = true;
+    exportBtn.disabled = true;
+    if (table) table.destroy();
+    const file = e.target.files[0];
+
+    Papa.parse(file, {
+      header: true,
+      worker: true,
+      skipEmptyLines: true,
+      step: function(results) {
+        originalData.push(results.data);
+        if (originalData.length % 10000 === 0) {
+          progress.textContent = `已解析行数: ${originalData.length}`;
+        }
+      },
+      complete: function() {
+        progress.textContent = `解析完成，共 ${originalData.length} 行`;
+        if (originalData.length === 0) {
+          alert('CSV文件无数据或格式不正确');
+          return;
+        }
+
+        currentColumns = Object.keys(originalData[0]).map(field => ({
+          title: field,
+          field: field,
+          headerFilter: false,
+        }));
+
+        collectUniqueValues();
+
+        addGroup(); // 自动添加一个默认条件组
+
+        table = new Tabulator("#table", {
+          data: originalData,
+          layout: "fitColumns",
+          pagination: "local",
+          paginationSize: 50,
+          columns: currentColumns,
+          placeholder: "无数据",
+        });
+
+        filteredData = originalData.slice();
+
+        addGroupBtn.disabled = false;
+        calcPercentBtn.disabled = false;
+        applyFilterBtn.disabled = false;
+        exportBtn.disabled = false;
+      },
+      error: function(err) {
+        progress.textContent = "解析错误: " + err.message;
+      }
+    });
+  });
+
+  function collectUniqueValues() {
+    uniqueValuesMap = {};
+    valueSelectTemplateMap = {};
+
+    originalData.forEach(row => {
+      currentColumns.forEach(col => {
+        const val = row[col.field] ?? '';
+        if (!uniqueValuesMap[col.field]) uniqueValuesMap[col.field] = new Set();
+        uniqueValuesMap[col.field].add(val.toString());
+      });
+    });
+
+    Object.keys(uniqueValuesMap).forEach(field => {
+      const values = Array.from(uniqueValuesMap[field]).sort();
+
+      if (values.length <= 20) {
+        // 使用下拉框
+        const select = document.createElement('select');
+        values.forEach(val => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          select.appendChild(opt);
+        });
+        valueSelectTemplateMap[field] = select;
+      } else {
+        // 使用文本输入框
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = '请输入值（唯一值太多）';
+        valueSelectTemplateMap[field] = input;
+      }
+    });
+  }
+
+  addGroupBtn.addEventListener('click', addGroup);
+
+  function addGroup() {
+    const groupDiv = document.createElement('div');
+    groupDiv.className = 'condition-group';
+
+    const headerDiv = document.createElement('div');
+    headerDiv.className = 'group-header';
+
+    const title = document.createElement('div');
+    title.textContent = `条件组 #${groupsContainer.children.length + 1}`;
+
+    const removeGroupBtn = document.createElement('button');
+    removeGroupBtn.textContent = '删除条件组';
+    removeGroupBtn.className = 'remove-group';
+    removeGroupBtn.type = 'button';
+    removeGroupBtn.addEventListener('click', () => {
+      groupsContainer.removeChild(groupDiv);
+      updateGroupTitles();
+    });
+
+    headerDiv.appendChild(title);
+    headerDiv.appendChild(removeGroupBtn);
+
+    const conditionsDiv = document.createElement('div');
+    conditionsDiv.className = 'conditions-container';
+
+    const addConditionBtn = document.createElement('button');
+    addConditionBtn.textContent = '新增子条件';
+    addConditionBtn.className = 'add-condition';
+    addConditionBtn.type = 'button';
+    addConditionBtn.addEventListener('click', () => {
+      addConditionRow(conditionsDiv);
+    });
+
+    groupDiv.appendChild(headerDiv);
+    groupDiv.appendChild(conditionsDiv);
+    groupDiv.appendChild(addConditionBtn);
+
+    groupsContainer.appendChild(groupDiv);
+    addConditionRow(conditionsDiv);
+  }
+
+  function updateGroupTitles() {
+    Array.from(groupsContainer.children).forEach((groupDiv, idx) => {
+      const titleDiv = groupDiv.querySelector('.group-header > div:first-child');
+      if (titleDiv) {
+        titleDiv.textContent = `条件组 #${idx + 1}`;
+      }
+    });
+  }
+
+  function addConditionRow(container) {
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'condition-row';
+
+    const fieldSelect = document.createElement('select');
+    currentColumns.forEach(col => {
+      const opt = document.createElement('option');
+      opt.value = col.field;
+      opt.textContent = col.title;
+      fieldSelect.appendChild(opt);
+    });
+
+    const opSelect = document.createElement('select');
+    operators.forEach(op => {
+      const option = document.createElement('option');
+      option.value = op.value;
+      option.textContent = op.label;
+      opSelect.appendChild(option);
+    });
+
+    // 初始值控件
+    let valueControl = valueSelectTemplateMap[currentColumns[0].field].cloneNode(true);
+
+    const removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '删除子条件';
+    removeBtn.className = 'remove-condition';
+    removeBtn.addEventListener('click', () => {
+      if (container.children.length <= 1) {
+        alert('每个条件组至少保留一个条件');
+        return;
+      }
+      container.removeChild(rowDiv);
+    });
+
+    fieldSelect.addEventListener('change', () => {
+      const field = fieldSelect.value;
+      const newControl = valueSelectTemplateMap[field].cloneNode(true);
+      rowDiv.replaceChild(newControl, valueControl);
+      valueControl = newControl;
+    });
+
+    rowDiv.appendChild(fieldSelect);
+    rowDiv.appendChild(opSelect);
+    rowDiv.appendChild(valueControl);
+    rowDiv.appendChild(removeBtn);
+
+    container.appendChild(rowDiv);
+  }
+
+  function getConditionsFromGroup(groupDiv) {
+    const conds = [];
+    const rows = groupDiv.querySelectorAll('.condition-row');
+    rows.forEach(rowDiv => {
+      const selects = rowDiv.querySelectorAll('select, input');
+      if (selects.length < 3) return;
+      const field = selects[0].value;
+      const operator = selects[1].value;
+      const keyword = selects[2].value.trim();
+      if (keyword !== '') {
+        conds.push({ field, operator, keyword });
+      }
+    });
+    return conds;
+  }
+
+  function checkCondition(row, cond) {
+    const val = row[cond.field];
+    if (val === undefined) return false;
+    const operator = cond.operator;
+    const keyword = cond.keyword;
+
+    if (operator === 'contains') {
+      return val.toString().toLowerCase().includes(keyword.toLowerCase());
+    } else if (operator === '>') {
+      return parseFloat(val) > parseFloat(keyword);
+    } else if (operator === '>=') {
+      return parseFloat(val) >= parseFloat(keyword);
+    } else if (operator === '=') {
+      return val.toString() === keyword;
+    } else if (operator === '<') {
+      return parseFloat(val) < parseFloat(keyword);
+    } else if (operator === '<=') {
+      return parseFloat(val) <= parseFloat(keyword);
+    }
+    return false;
+  }
+
+  calcPercentBtn.addEventListener('click', () => {
+    if (originalData.length === 0) return alert('请先导入CSV数据');
+    const allGroups = Array.from(groupsContainer.children);
+    if (allGroups.length === 0) return alert('请先添加条件组');
+
+    let output = '';
+    allGroups.forEach((groupDiv, groupIndex) => {
+      const conds = getConditionsFromGroup(groupDiv);
+      const matchedRows = originalData.filter(row => conds.every(cond => checkCondition(row, cond)));
+      const percent = (matchedRows.length / originalData.length * 100).toFixed(2);
+      output += `条件组 #${groupIndex + 1} 筛选结果数量: ${matchedRows.length} / ${originalData.length}，占比 ${percent}%\n`;
+    });
+    percentDisplay.textContent = output;
+  });
+
+  applyFilterBtn.addEventListener('click', () => {
+    if (originalData.length === 0) return alert('请先导入CSV数据');
+    const allGroups = Array.from(groupsContainer.children);
+    if (allGroups.length === 0) return alert('请先添加条件组');
+
+    filteredData = originalData.filter(row => {
+      return allGroups.every(groupDiv => {
+        const conds = getConditionsFromGroup(groupDiv);
+        return conds.every(cond => checkCondition(row, cond));
+      });
+    });
+
+    table.setData(filteredData);
+    progress.textContent = `筛选完成，结果数量：${filteredData.length} 行`;
+  });
+
+  exportBtn.addEventListener('click', () => {
+    if (!filteredData.length) return alert('没有筛选结果，不能导出');
+    const csv = Papa.unparse(filteredData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "filtered_data.csv";
+    link.click();
+  });
+</script>
+
+</body>
+</html>
